@@ -29,6 +29,30 @@ This generates an HTML report under `out/daily-job-report.html` and a PDF under 
 
 Copy `.env.example` to `.env` and set the required values, especially `OPENAI_API_KEY` if you want LLM-powered scoring.
 
+## Workflow
+
+```mermaid
+flowchart TD
+    A[Start: python app.py] --> B[Load .env config]
+    B --> C[Build candidate profile]
+    C --> D{--demo flag?}
+    D -- Yes --> E[Load built-in demo jobs]
+    D -- No --> F[Collect jobs from sources:\nGreenhouse, Lever, Ashby,\nSmartRecruiters, company careers]
+    E --> G[Score jobs against profile\nusing ATS weighting]
+    F --> G
+    G --> H{ATS score >= 80\nand preferred location?}
+    H -- No --> I[Discard job]
+    H -- Yes --> J[Add to shortlist]
+    J --> K[Upsert shortlisted jobs\ninto SQLite database]
+    K --> L[Generate HTML report]
+    L --> M[Generate PDF report]
+    M --> N{--email flag?}
+    N -- Yes --> O[Send email report via SMTP]
+    N -- No --> P[Skip email delivery]
+    O --> Q[Done]
+    P --> Q[Done]
+```
+
 ## Project layout
 
 - `app.py` orchestrates the job collection, matching, DB write, and report generation
