@@ -4,7 +4,7 @@ This project implements the MVP described in the PRD for a daily AI-powered DevO
 
 ## What it does
 
-- Aggregates candidate jobs from common ATS sources and company career pages
+- Aggregates candidate jobs from common ATS sources and different company career pages
 - Normalizes and deduplicates job records
 - Includes direct application URLs, company websites, salary ranges, locations, and technology tags when available
 - Demo results use real company career websites; links are labeled as company careers pages unless a live role URL was returned by an ATS
