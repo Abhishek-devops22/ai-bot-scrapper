@@ -38,7 +38,7 @@ def main() -> int:
     shortlisted = [
         job
         for job in scored_jobs
-        if job["ats_score"] >= 80 and job["preferred_location"]
+        if job["ats_score"] >= 30 and job["preferred_location"]
     ]
 
     db.upsert_jobs(shortlisted)

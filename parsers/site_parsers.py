@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 import os
 import re
 from typing import Iterable
@@ -8,6 +9,72 @@ import requests
 from bs4 import BeautifulSoup
 
 from .base import Job
+
+
+# Companies that publish a public, no-auth Greenhouse job-board API
+# (https://boards-api.greenhouse.io/v1/boards/<token>/jobs). Tokens verified live.
+GREENHOUSE_BOARDS: dict[str, tuple[str, str]] = {
+    "gitlab": ("GitLab", "https://about.gitlab.com/"),
+    "cloudflare": ("Cloudflare", "https://www.cloudflare.com/"),
+    "datadog": ("Datadog", "https://www.datadoghq.com/"),
+    "elastic": ("Elastic", "https://www.elastic.co/"),
+    "grafanalabs": ("Grafana Labs", "https://grafana.com/"),
+    "canonical": ("Canonical", "https://canonical.com/"),
+    "hellofresh": ("HelloFresh", "https://www.hellofresh.com/"),
+    "n26": ("N26", "https://n26.com/"),
+    "celonis": ("Celonis", "https://www.celonis.com/"),
+    "getyourguide": ("GetYourGuide", "https://www.getyourguide.com/"),
+    "flix": ("FlixBus", "https://www.flixbus.com/"),
+    "adyen": ("Adyen", "https://www.adyen.com/"),
+    "contentful": ("Contentful", "https://www.contentful.com/"),
+    "wolt": ("Wolt", "https://wolt.com/"),
+    "solarisbank": ("Solaris", "https://www.solarisgroup.com/"),
+    "deliveroo": ("Deliveroo", "https://deliveroo.co.uk/"),
+    "monzo": ("Monzo", "https://monzo.com/"),
+    "vercel": ("Vercel", "https://vercel.com/"),
+    "circleci": ("CircleCI", "https://circleci.com/"),
+    "pagerduty": ("PagerDuty", "https://www.pagerduty.com/"),
+}
+
+# Companies that publish a public, no-auth Workable job-board widget API
+# (https://apply.workable.com/api/v1/widget/accounts/<account>). Accounts verified live.
+WORKABLE_BOARDS: dict[str, tuple[str, str]] = {
+    "hack-the-box-ltd": ("Hack The Box", "https://www.hackthebox.com/"),
+    "runware": ("Runware", "https://runware.ai/"),
+    "modifi": ("MODIFI", "https://modifi.com/"),
+    "laravel": ("Laravel", "https://laravel.com/"),
+}
+
+ROLE_KEYWORDS = (
+    "devops",
+    "platform",
+    "sre",
+    "site reliability",
+    "infrastructure",
+    "cloud engineer",
+    "cloud platform",
+    "reliability engineer",
+    "production engineer",
+)
+
+KNOWN_TECH = [
+    "AWS",
+    "GCP",
+    "Azure",
+    "Kubernetes",
+    "Docker",
+    "Terraform",
+    "Ansible",
+    "GitHub Actions",
+    "GitLab CI",
+    "Jenkins",
+    "Prometheus",
+    "Grafana",
+    "Datadog",
+    "Kafka",
+    "Python",
+    "Go",
+]
 
 
 def _salary_from_record(record: dict) -> str:
@@ -203,39 +270,101 @@ def _parse_generic_job_listing(html: str, source: str) -> list[Job]:
     return jobs
 
 
-def _fetch_live_jobs() -> list[Job]:
-    pages: list[tuple[str, str]] = [
-        ("greenhouse", "https://boards-api.greenhouse.io/v1/boards/greenhouse/jobs?content=true"),
-        ("lever", "https://api.lever.co/v0/postings/companyname?mode=json"),
-        ("smartrecruiters", "https://api.smartrecruiters.com/companies/"),
-    ]
+def _clean_html(raw: str) -> str:
+    text = BeautifulSoup(html.unescape(raw or ""), "html.parser").get_text(" ", strip=True)
+    return text[:1200]
+
+
+def _tech_stack_from_text(text: str) -> list[str]:
+    lowered = text.lower()
+    return [tech for tech in KNOWN_TECH if tech.lower() in lowered]
+
+
+def _is_relevant_role(title: str) -> bool:
+    lowered = title.lower()
+    return any(re.search(rf"\b{re.escape(keyword)}\b", lowered) for keyword in ROLE_KEYWORDS)
+
+
+def _fetch_greenhouse_jobs(token: str, company: str, website: str) -> list[Job]:
+    url = f"https://boards-api.greenhouse.io/v1/boards/{token}/jobs"
+    response = requests.get(url, params={"content": "true"}, timeout=15)
+    response.raise_for_status()
+    payload = response.json()
 
     jobs: list[Job] = []
-    for source, url in pages:
+    for record in payload.get("jobs", []):
+        title = str(record.get("title") or "Unknown role")
+        if not _is_relevant_role(title):
+            continue
+
+        description = _clean_html(record.get("content") or "")
+        location = str((record.get("location") or {}).get("name") or "Remote")
+
+        jobs.append(
+            Job(
+                source="greenhouse",
+                company=company,
+                title=title,
+                location=location,
+                salary=_salary_from_record(record),
+                remote_policy="Remote" if "remote" in location.lower() else "Unknown",
+                application_url=str(record.get("absolute_url") or ""),
+                company_website=website,
+                tech_stack=_tech_stack_from_text(f"{title} {description}"),
+                description=description,
+            )
+        )
+    return jobs
+
+
+def _fetch_workable_jobs(account: str, company: str, website: str) -> list[Job]:
+    url = f"https://apply.workable.com/api/v1/widget/accounts/{account}"
+    response = requests.get(url, timeout=15)
+    response.raise_for_status()
+    payload = response.json()
+
+    jobs: list[Job] = []
+    for record in payload.get("jobs", []):
+        title = str(record.get("title") or "Unknown role")
+        if not _is_relevant_role(title):
+            continue
+
+        city = record.get("city") or ""
+        country = record.get("country") or "Remote"
+        location = f"{city}, {country}".strip(", ") if city else country
+        description = " ".join(
+            part
+            for part in [record.get("department"), record.get("employment_type"), record.get("experience")]
+            if part
+        )
+
+        jobs.append(
+            Job(
+                source="workable",
+                company=company,
+                title=title,
+                location=str(location),
+                salary="Not disclosed",
+                remote_policy="Remote" if record.get("telecommuting") else "Unknown",
+                application_url=str(record.get("application_url") or record.get("url") or ""),
+                company_website=website,
+                tech_stack=_tech_stack_from_text(f"{title} {description}"),
+                description=description or title,
+            )
+        )
+    return jobs
+
+
+def _fetch_live_jobs() -> list[Job]:
+    jobs: list[Job] = []
+    for token, (company, website) in GREENHOUSE_BOARDS.items():
         try:
-            response = requests.get(url, timeout=12)
-            response.raise_for_status()
-            payload = response.json()
-            candidates = payload.get("jobs", []) if isinstance(payload, dict) else payload
-            for record in candidates[:3]:
-                title = record.get("title") or record.get("name") or "Unknown role"
-                company = record.get("company_name") or record.get("company") or "Unknown company"
-                description = record.get("description") or ""
-                location = record.get("location") or record.get("office_location") or "Remote"
-                jobs.append(
-                    Job(
-                        source=source,
-                        company=str(company),
-                        title=str(title),
-                        location=str(location),
-                        salary=_salary_from_record(record),
-                        remote_policy="Unknown",
-                        application_url=str(record.get("absolute_url") or ""),
-                        company_website=_company_website(record),
-                        tech_stack=["AWS", "Kubernetes", "Terraform"],
-                        description=str(description),
-                    )
-                )
+            jobs.extend(_fetch_greenhouse_jobs(token, company, website))
+        except Exception:
+            continue
+    for account, (company, website) in WORKABLE_BOARDS.items():
+        try:
+            jobs.extend(_fetch_workable_jobs(account, company, website))
         except Exception:
             continue
     return jobs

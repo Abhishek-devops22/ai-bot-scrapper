@@ -43,19 +43,62 @@ def calculate_ats(job: dict[str, Any]) -> int:
 
     score = 0
 
-    if _has_keyword(normalized, "aws", "eks", "cloudformation", "iam"):
+    if _has_keyword(
+        normalized, "aws", "eks", "cloudformation", "iam", "gcp", "azure", "cloud platform", "cloud infrastructure"
+    ):
         score += 15
-    if _has_keyword(normalized, "kubernetes", "k8s", "helm", "docker"):
+    if _has_keyword(normalized, "kubernetes", "k8s", "helm", "docker", "containers", "container orchestration"):
         score += 15
-    if _has_keyword(normalized, "terraform", "terragrunt"):
+    if _has_keyword(normalized, "terraform", "terragrunt", "infrastructure as code", "iac", "pulumi"):
         score += 20
-    if _has_keyword(normalized, "ci/cd", "github actions", "gitlab ci", "jenkins", "argo cd", "buildkite"):
+    if _has_keyword(
+        normalized,
+        "ci/cd",
+        "github actions",
+        "gitlab ci",
+        "jenkins",
+        "argo cd",
+        "buildkite",
+        "circleci",
+        "continuous integration",
+        "continuous delivery",
+        "continuous deployment",
+        "gitops",
+    ):
         score += 15
-    if _has_keyword(normalized, "observability", "prometheus", "grafana", "datadog", "cloudwatch", "opentelemetry"):
+    if _has_keyword(
+        normalized,
+        "observability",
+        "prometheus",
+        "grafana",
+        "datadog",
+        "cloudwatch",
+        "opentelemetry",
+        "monitoring",
+        "logging",
+        "tracing",
+        "metrics",
+    ):
         score += 15
-    if _has_keyword(normalized, "startup", "platform engineering", "platform", "sre", "devops"):
+    if _has_keyword(
+        normalized,
+        "startup",
+        "platform engineering",
+        "platform",
+        "sre",
+        "devops",
+        "site reliability",
+        "reliability engineer",
+        "infrastructure engineer",
+    ):
         score += 10
-    if _has_keyword(normalized, "english", "english speaking", "remote") or "germany" in normalized:
+    if (
+        _has_keyword(normalized, "english", "english speaking", "remote")
+        or "germany" in normalized
+        or "berlin" in normalized
+        or "munich" in normalized
+        or "frankfurt" in normalized
+    ):
         score += 10
 
     return min(score, 100)
